@@ -1,0 +1,84 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+parameters:
+  - name: pipeline_file
+    type: string
+  - name: experiment_name
+    type: string
+  - name: display_name
+    type: string
+  - name: registry_name
+    type: string
+    default: 'RegMLopsLitev1'
+
+steps:
+  - task: AzureCLI@2
+    displayName: Run Azure ML pipeline
+    continueOnError: true
+    inputs:
+      azureSubscription: $(ado_service_connection_rg)
+      scriptType: bash
+      workingDirectory: $(System.DefaultWorkingDirectory)
+      scriptLocation: inlineScript
+      inlineScript: |
+
+        run_id=$(az ml job create \
+            --file ${{ parameters.pipeline_file }} \
+            --resource-group $(resource_group) \
+            --workspace-name $(aml_workspace) \
+            --set experiment_name=${{ parameters.experiment_name }} \
+                  inputs.subscriptionId=$(subscription_id) \
+                  inputs.rg_group=$(resource_group) \
+                  inputs.workspace=$(aml_workspace) \
+                  display_name=${{ parameters.display_name }} \
+            --query name -o tsv)
+
+        if [[ -z "$run_id" ]]
+        then
+          echo "Job creation failed"
+          exit 3
+        fi
+
+        echo "Job ID: $run_id"
+
+        az ml job show \
+            --name $run_id \
+            --resource-group $(resource_group) \
+            --workspace-name $(aml_workspace) \
+            --web
+
+        status=$(az ml job show \
+            --name $run_id \
+            --resource-group $(resource_group) \
+            --workspace-name $(aml_workspace) \
+            --query status -o tsv)
+
+        if [[ -z "$status" ]]
+        then
+          echo "Status query failed"
+          exit 4
+        fi
+
+        running=("NotStarted" "Queued" "Starting" "Preparing" "Running" "Finalizing" "CancelRequested")
+
+        while [[ ${running[*]} =~ $status ]]
+        do
+          sleep 15
+
+          status=$(az ml job show \
+              --name $run_id \
+              --resource-group $(resource_group) \
+              --workspace-name $(aml_workspace) \
+              --query status -o tsv)
+
+          echo "Current status: $status"
+        done
+
+        if [[ "$status" != "Completed" ]]
+        then
+          echo "Training Job failed or canceled"
+          exit 3
+        fi
+
+        echo "Training Job completed successfully"

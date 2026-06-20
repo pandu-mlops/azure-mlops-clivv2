@@ -1,0 +1,26 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: taxi-online-dp
+endpoint_name: taxi-online-mlopazru1744prod
+model: azureml:taxi-model@latest
+instance_type: Standard_D2as_v4
+instance_count: 1
+code_configuration:
+  code: .
+  scoring_script: score.py
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file:
+    name: taxi-env
+    channels:
+      - conda-forge
+    dependencies:
+      - python=3.8
+      - pip:
+        - mlflow==2.17.2
+        - scikit-learn==0.24.1
+        - pandas
+        - numpy
+        - cloudpickle
+        - azureml-defaults
+        - azureml-inference-server-http
+        - azureml-ai-monitoring
